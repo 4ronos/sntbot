@@ -2,6 +2,7 @@ import logging
 from aiogram import Router, F, types, Bot
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from typing import Optional, Dict, Any, Union
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -20,6 +20,7 @@ services:
       - .env
     volumes:
       - remnawave-tg-shop-db-data:/var/lib/postgresql/data
+      - ./opt/remnawave/sntbot/db/migrations/:/var/lib/postgresql/data/migrations
     networks:
       - remnawave-network
     restart: unless-stopped

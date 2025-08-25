@@ -88,6 +88,12 @@ async def get_payment_by_db_id(session: AsyncSession,
     return result.scalar_one_or_none()
 
 
+async def get_payment_by_id(session: AsyncSession,
+                           payment_id: int) -> Optional[Payment]:
+    """Alias for get_payment_by_db_id for backward compatibility"""
+    return await get_payment_by_db_id(session, payment_id)
+
+
 async def update_payment_status_by_db_id(
         session: AsyncSession,
         payment_db_id: int,

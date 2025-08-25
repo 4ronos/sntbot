@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     RUB_PRICE_6_MONTHS: Optional[int] = Field(default=None)
     RUB_PRICE_12_MONTHS: Optional[int] = Field(default=None)
 
+    # Device limit settings
+    DEVICE_LIMIT_1: int = Field(default=1, description="Device limit for 1 device option")
+    DEVICE_LIMIT_2: int = Field(default=2, description="Device limit for 2 devices option")
+    DEVICE_LIMIT_3: int = Field(default=3, description="Device limit for 3 devices option")
+    DEVICE_LIMIT_4: int = Field(default=4, description="Device limit for 4 devices option")
+    DEVICE_LIMIT_5: int = Field(default=5, description="Device limit for 5 devices option")
+    DEVICE_LIMIT_6: int = Field(default=6, description="Device limit for 6 devices option")
+    DEVICE_LIMIT_CUSTOM: int = Field(default=10, description="Device limit for custom devices option")
+
     STARS_PRICE_1_MONTH: Optional[int] = Field(default=None)
     STARS_PRICE_3_MONTHS: Optional[int] = Field(default=None)
     STARS_PRICE_6_MONTHS: Optional[int] = Field(default=None)
@@ -275,6 +284,20 @@ class Settings(BaseSettings):
         if self.TRIBUTE_ENABLED and self.MONTH_12_ENABLED and self.TRIBUTE_LINK_12_MONTHS:
             links[12] = self.TRIBUTE_LINK_12_MONTHS
         return links
+
+    @computed_field
+    @property
+    def device_limit_options(self) -> Dict[int, int]:
+        """Returns device limit options with their corresponding HWID_FALLBACK_DEVICE_LIMIT values"""
+        return {
+            1: self.DEVICE_LIMIT_1,
+            2: self.DEVICE_LIMIT_2,
+            3: self.DEVICE_LIMIT_3,
+            4: self.DEVICE_LIMIT_4,
+            5: self.DEVICE_LIMIT_5,
+            6: self.DEVICE_LIMIT_6,
+            10: self.DEVICE_LIMIT_CUSTOM,  # Custom option
+        }
 
     @computed_field
     @property

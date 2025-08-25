@@ -148,6 +148,9 @@ class TributeService:
                     provider_payment_id=provider_payment_id,
                 )
 
+                # Get device_limit from payment record
+                device_limit = payment_record.device_limit if payment_record else 1
+
                 activation_details = await subscription_service.activate_subscription(
                     session,
                     int(user_id),
@@ -155,6 +158,7 @@ class TributeService:
                     float(amount_float),
                     payment_record.payment_id,
                     provider="tribute",
+                    device_limit=device_limit,
                 )
                 referral_bonus = await referral_service.apply_referral_bonuses_for_payment(
                     session,

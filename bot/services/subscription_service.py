@@ -395,6 +395,7 @@ class SubscriptionService:
         payment_db_id: int,
         promo_code_id_from_payment: Optional[int] = None,
         provider: str = "yookassa",
+        device_limit: int = 1,
     ) -> Optional[Dict[str, Any]]:
 
         db_user = await user_dal.get_user_by_id(session, user_id)
@@ -477,6 +478,7 @@ class SubscriptionService:
             "is_active": True,
             "status_from_panel": "ACTIVE",
             "traffic_limit_bytes": self.settings.user_traffic_limit_bytes,
+            "device_limit": device_limit,
             "provider": provider,
             "skip_notifications": provider == "tribute" and self.settings.TRIBUTE_SKIP_NOTIFICATIONS,
         }
@@ -496,6 +498,7 @@ class SubscriptionService:
             expire_at=final_end_date,
             status="ACTIVE",
             traffic_limit_bytes=self.settings.user_traffic_limit_bytes,
+            device_limit=device_limit,
         )
 
         updated_panel_user = await self.panel_service.update_user_details_on_panel(
@@ -705,6 +708,7 @@ class SubscriptionService:
             "config_link": panel_user_data.get("subscriptionUrl"),
             "traffic_limit_bytes": panel_user_data.get("trafficLimitBytes"),
             "traffic_used_bytes": panel_user_data.get("usedTrafficBytes"),
+            "device_limit": local_active_sub.device_limit if local_active_sub else 1,
             "user_bot_username": db_user.username,
             "is_panel_data": True,
         }
@@ -769,6 +773,7 @@ class SubscriptionService:
         expire_at: Optional[datetime] = None,
         status: Optional[str] = None,
         traffic_limit_bytes: Optional[int] = None,
+        device_limit: Optional[int] = None,
         include_uuid: bool = True,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {}
@@ -781,6 +786,8 @@ class SubscriptionService:
         if traffic_limit_bytes is not None:
             payload["trafficLimitBytes"] = traffic_limit_bytes
             payload["trafficLimitStrategy"] = self.settings.USER_TRAFFIC_STRATEGY
+        if device_limit is not None:
+            payload["hwidFallbackDeviceLimit"] = device_limit
         if self.settings.parsed_user_squad_uuids:
             payload["activeInternalSquads"] = self.settings.parsed_user_squad_uuids
         return payload

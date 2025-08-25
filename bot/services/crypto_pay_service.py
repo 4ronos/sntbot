@@ -62,6 +62,7 @@ class CryptoPayService:
         months: int,
         amount: float,
         description: str,
+        device_limit: int = 1,
     ) -> Optional[str]:
         if not self.configured or not self.client:
             logging.error("CryptoPayService not configured")
@@ -76,6 +77,7 @@ class CryptoPayService:
                 "status": "pending_cryptopay",
                 "description": description,
                 "subscription_duration_months": months,
+                "device_limit": device_limit,
                 "provider": "cryptopay",
             },
         )
@@ -133,6 +135,10 @@ class CryptoPayService:
                     str(invoice.invoice_id),
                     "succeeded",
                 )
+                # Get device_limit from payment record
+                payment_record = await payment_dal.get_payment_by_id(session, payment_db_id)
+                device_limit = payment_record.device_limit if payment_record else 1
+
                 activation = await subscription_service.activate_subscription(
                     session,
                     user_id,
@@ -140,6 +146,7 @@ class CryptoPayService:
                     float(invoice.amount),
                     payment_db_id,
                     provider="cryptopay",
+                    device_limit=device_limit,
                 )
                 referral_bonus = await referral_service.apply_referral_bonuses_for_payment(
                     session,

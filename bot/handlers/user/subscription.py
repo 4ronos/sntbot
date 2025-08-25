@@ -10,7 +10,7 @@ from config.settings import Settings
 from db.dal import payment_dal
 from bot.keyboards.inline.user_keyboards import (
     get_subscription_options_keyboard, get_payment_method_keyboard,
-    get_payment_url_keyboard, get_back_to_main_menu_markup)
+    get_payment_url_keyboard, get_back_to_main_menu_markup, get_device_limit_keyboard)
 from bot.services.yookassa_service import YooKassaService
 from bot.services.stars_service import StarsService
 from bot.services.crypto_pay_service import CryptoPayService
@@ -29,46 +29,31 @@ async def display_subscription_options(event: Union[types.Message,
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: Optional[JsonI18n] = i18n_data.get("i18n_instance")
 
-    get_text = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs
-                                                  ) if i18n else key
+    get_text = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs) if i18n else key
 
     if not i18n:
-        err_msg = "Language service error."
-        if isinstance(event, types.CallbackQuery):
-            await event.answer(err_msg, show_alert=True)
-        elif isinstance(event, types.Message):
-            await event.answer(err_msg)
+        if isinstance(event, types.Message):
+            await event.answer(get_text("error_occurred_try_again"))
+        else:
+            await event.answer(get_text("error_occurred_try_again"), show_alert=True)
         return
 
-    currency_symbol_val = settings.DEFAULT_CURRENCY_SYMBOL
-    text_content = get_text("select_subscription_period"
-                            ) if settings.subscription_options else get_text(
-                                "no_subscription_options_available")
-
-    reply_markup = get_subscription_options_keyboard(
-        settings.subscription_options, currency_symbol_val, current_lang, i18n
-    ) if settings.subscription_options else get_back_to_main_menu_markup(
-        current_lang, i18n)
-
-    target_message_obj = event.message if isinstance(
-        event, types.CallbackQuery) else event
-    if not target_message_obj:
-        if isinstance(event, types.CallbackQuery):
-            await event.answer(get_text("error_occurred_try_again"),
-                               show_alert=True)
+    # Show device limit selection instead of subscription periods
+    device_options = settings.device_limit_options
+    if not device_options:
+        if isinstance(event, types.Message):
+            await event.answer(get_text("no_subscription_options_available"))
+        else:
+            await event.message.edit_text(get_text("no_subscription_options_available"))
         return
 
-    if isinstance(event, types.CallbackQuery):
-        try:
-            await target_message_obj.edit_text(text_content,
-                                               reply_markup=reply_markup)
-        except Exception:
-            await target_message_obj.answer(text_content,
-                                            reply_markup=reply_markup)
-        await event.answer()
+    message_text = get_text("select_device_limit")
+    keyboard = get_device_limit_keyboard(device_options, current_lang, i18n)
+
+    if isinstance(event, types.Message):
+        await event.answer(message_text, reply_markup=keyboard)
     else:
-        await target_message_obj.answer(text_content,
-                                        reply_markup=reply_markup)
+        await event.message.edit_text(message_text, reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("subscribe_period:"))
@@ -77,55 +62,147 @@ async def select_subscription_period_callback_handler(
         session: AsyncSession):
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: Optional[JsonI18n] = i18n_data.get("i18n_instance")
-    get_text = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs
-                                                  ) if i18n else key
+
+    get_text = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs) if i18n else key
 
     if not i18n or not callback.message:
-        await callback.answer(get_text("error_occurred_try_again"),
-                              show_alert=True)
+        await callback.answer(get_text("error_occurred_try_again"), show_alert=True)
         return
 
     try:
-        months = int(callback.data.split(":")[-1])
+        parts = callback.data.split(":")
+        if len(parts) == 2:
+            # Old format without device_limit
+            months = int(parts[1])
+            device_limit = 1
+        elif len(parts) == 3:
+            # New format with device_limit
+            months = int(parts[1])
+            device_limit = int(parts[2])
+        else:
+            raise ValueError("Invalid data format")
     except (ValueError, IndexError):
-        logging.error(
-            f"Invalid subscription period in callback_data: {callback.data}")
+        logging.error(f"Invalid subscribe_period data in callback: {callback.data}")
         await callback.answer(get_text("error_try_again"), show_alert=True)
         return
 
-    price_rub = settings.subscription_options.get(months)
-    if price_rub is None:
-        logging.error(
-            f"Price not found for {months} months subscription period in settings.subscription_options."
-        )
+    base_price = settings.subscription_options.get(months)
+    if base_price is None:
         await callback.answer(get_text("error_try_again"), show_alert=True)
         return
 
+    # Calculate final price with device limit
+    final_price = base_price * device_limit
     currency_symbol_val = settings.DEFAULT_CURRENCY_SYMBOL
+
     text_content = get_text("choose_payment_method")
     tribute_url = settings.tribute_payment_links.get(months)
     stars_price = settings.stars_subscription_options.get(months)
+    if stars_price:
+        stars_price = stars_price * device_limit  # Adjust stars price too
+    
     reply_markup = get_payment_method_keyboard(
         months,
-        price_rub,
+        final_price,
         tribute_url,
         stars_price,
         currency_symbol_val,
         current_lang,
         i18n,
         settings,
+        device_limit,
     )
 
     try:
-        await callback.message.edit_text(text_content,
-                                         reply_markup=reply_markup)
+        await callback.message.edit_text(text_content, reply_markup=reply_markup)
     except Exception as e_edit:
         logging.warning(
             f"Edit message for payment method selection failed: {e_edit}. Sending new one."
         )
-        await callback.message.answer(text_content,
-                                      reply_markup=reply_markup)
+        await callback.message.answer(text_content, reply_markup=reply_markup)
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("device_limit:"))
+async def select_device_limit_callback_handler(
+        callback: types.CallbackQuery, settings: Settings, i18n_data: dict,
+        session: AsyncSession):
+    
+    current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
+    i18n: Optional[JsonI18n] = i18n_data.get("i18n_instance")
+
+    get_text = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs) if i18n else key
+
+    if not i18n or not callback.message:
+        await callback.answer(get_text("error_occurred_try_again"), show_alert=True)
+        return
+
+    try:
+        _, device_limit_str = callback.data.split(":", 1)
+        if device_limit_str == "custom":
+            # Handle custom device limit
+            await callback.message.edit_text(
+                get_text("enter_custom_device_limit"),
+                reply_markup=get_back_to_main_menu_markup(current_lang, i18n)
+            )
+            # Set state for custom input
+            # Note: You'll need to implement the state handling for custom input
+            await callback.answer()
+            return
+        
+        device_limit = int(device_limit_str)
+    except (ValueError, IndexError):
+        logging.error(f"Invalid device_limit data in callback: {callback.data}")
+        await callback.answer(get_text("error_try_again"), show_alert=True)
+        return
+
+    # Show subscription period selection for the selected device limit
+    await show_subscription_periods_for_device_limit(callback, settings, i18n_data, device_limit)
+    await callback.answer()
+
+
+async def show_subscription_periods_for_device_limit(callback: types.CallbackQuery, 
+                                                    settings: Settings, 
+                                                    i18n_data: dict, 
+                                                    device_limit: int):
+    """Show subscription period selection for a specific device limit"""
+    current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
+    i18n: Optional[JsonI18n] = i18n_data.get("i18n_instance")
+
+    get_text = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs) if i18n else key
+
+    if not i18n or not callback.message:
+        await callback.answer(get_text("error_occurred_try_again"), show_alert=True)
+        return
+
+    # Calculate prices for each subscription period with the selected device limit
+    subscription_options_with_prices = {}
+    currency_symbol_val = settings.DEFAULT_CURRENCY_SYMBOL
+    
+    for months, base_price in settings.subscription_options.items():
+        # Price is multiplied by device limit
+        total_price = base_price * device_limit
+        subscription_options_with_prices[months] = total_price
+
+    if not subscription_options_with_prices:
+        await callback.message.edit_text(get_text("no_subscription_options_available"))
+        await callback.answer()
+        return
+
+    # Create custom keyboard for subscription periods with device-adjusted prices
+    builder = InlineKeyboardBuilder()
+    for months, price in subscription_options_with_prices.items():
+        button_text = f"{months} мес. - {price} {currency_symbol_val}"
+        builder.button(text=button_text,
+                       callback_data=f"subscribe_period:{months}:{device_limit}")
+    
+    builder.adjust(1)
+    builder.row(
+        InlineKeyboardButton(text=get_text("back_to_main_menu_button"),
+                             callback_data="main_action:back_to_main"))
+
+    message_text = get_text("select_subscription_period")
+    await callback.message.edit_text(message_text, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("pay_stars:"))
@@ -143,7 +220,18 @@ async def pay_stars_callback_handler(
 
     try:
         _, data_payload = callback.data.split(":", 1)
-        months_str, price_str = data_payload.split(":")
+        parts = data_payload.split(":")
+        if len(parts) == 2:
+            # Old format without device_limit
+            months_str, price_str = parts
+            device_limit = 1
+        elif len(parts) == 3:
+            # New format with device_limit
+            months_str, price_str, device_limit_str = parts
+            device_limit = int(device_limit_str)
+        else:
+            raise ValueError("Invalid data format")
+            
         months = int(months_str)
         stars_price = int(price_str)
     except (ValueError, IndexError):
@@ -155,7 +243,7 @@ async def pay_stars_callback_handler(
     payment_description = get_text("payment_description_subscription", months=months)
 
     payment_id = await stars_service.create_invoice(
-        session, user_id, months, stars_price, payment_description)
+        session, user_id, months, stars_price, payment_description, device_limit)
     if payment_id is None:
         await callback.message.edit_text(get_text("error_payment_gateway"))
         await callback.answer(get_text("error_try_again"), show_alert=True)
@@ -168,42 +256,46 @@ async def pay_stars_callback_handler(
 async def pay_yk_callback_handler(
         callback: types.CallbackQuery, settings: Settings, i18n_data: dict,
         yookassa_service: YooKassaService, session: AsyncSession):
+    
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: Optional[JsonI18n] = i18n_data.get("i18n_instance")
 
-    get_text = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs
-                                                  ) if i18n else key
+    get_text = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs) if i18n else key
 
     if not i18n or not callback.message:
-
-        await callback.answer(get_text("error_occurred_try_again"),
-                              show_alert=True)
+        await callback.answer(get_text("error_occurred_try_again"), show_alert=True)
         return
 
     if not yookassa_service or not yookassa_service.configured:
         logging.error("YooKassa service is not configured or unavailable.")
         target_msg_edit = callback.message
-        await target_msg_edit.edit_text(get_text("payment_service_unavailable")
-                                        )
-        await callback.answer(get_text("payment_service_unavailable_alert"),
-                              show_alert=True)
+        await target_msg_edit.edit_text(get_text("payment_service_unavailable"))
+        await callback.answer(get_text("payment_service_unavailable_alert"), show_alert=True)
         return
 
     try:
         _, data_payload = callback.data.split(":", 1)
-        months_str, price_str = data_payload.split(":")
+        parts = data_payload.split(":")
+        if len(parts) == 2:
+            # Old format without device_limit
+            months_str, price_str = parts
+            device_limit = 1
+        elif len(parts) == 3:
+            # New format with device_limit
+            months_str, price_str, device_limit_str = parts
+            device_limit = int(device_limit_str)
+        else:
+            raise ValueError("Invalid data format")
+            
         months = int(months_str)
         price_rub = float(price_str)
     except (ValueError, IndexError):
-        logging.error(
-            f"Invalid pay_yk data in callback: {callback.data}")
+        logging.error(f"Invalid pay_yk data in callback: {callback.data}")
         await callback.answer(get_text("error_try_again"), show_alert=True)
         return
 
     user_id = callback.from_user.id
-
-    payment_description = get_text("payment_description_subscription",
-                                   months=months)
+    payment_description = get_text("payment_description_subscription", months=months)
     currency_code_for_yk = "RUB"
 
     payment_record_data = {
@@ -213,6 +305,7 @@ async def pay_yk_callback_handler(
         "status": "pending_yookassa",
         "description": payment_description,
         "subscription_duration_months": months,
+        "device_limit": device_limit,
     }
     db_payment_record = None
     try:
@@ -313,7 +406,18 @@ async def pay_crypto_callback_handler(
 
     try:
         _, data_payload = callback.data.split(":", 1)
-        months_str, amount_str = data_payload.split(":")
+        parts = data_payload.split(":")
+        if len(parts) == 2:
+            # Old format without device_limit
+            months_str, amount_str = parts
+            device_limit = 1
+        elif len(parts) == 3:
+            # New format with device_limit
+            months_str, amount_str, device_limit_str = parts
+            device_limit = int(device_limit_str)
+        else:
+            raise ValueError("Invalid data format")
+            
         months = int(months_str)
         amount_val = float(amount_str)
     except (ValueError, IndexError):
@@ -325,7 +429,7 @@ async def pay_crypto_callback_handler(
     description = get_text("payment_description_subscription", months=months)
 
     invoice_url = await cryptopay_service.create_invoice(
-        session, user_id, months, amount_val, description)
+        session, user_id, months, amount_val, description, device_limit)
     if invoice_url:
         await callback.message.edit_text(
             get_text("payment_link_message", months=months),
@@ -416,7 +520,8 @@ async def my_subscription_command_handler(
             f"{active['traffic_used_bytes'] / 2**30:.2f} GB"
             if active.get("traffic_used_bytes") is not None
             else get_text("traffic_na")
-        )
+        ),
+        device_limit=active.get("device_limit", 1)
     )
     markup = get_back_to_main_menu_markup(current_lang, i18n)
 

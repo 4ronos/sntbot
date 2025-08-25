@@ -101,6 +101,9 @@ async def process_successful_payment(session: AsyncSession, bot: Bot,
             raise Exception(
                 f"DB Error: Could not update payment record {payment_db_id}")
 
+        # Get device_limit from payment record
+        device_limit = updated_payment_record.device_limit if updated_payment_record else 1
+
         activation_details = await subscription_service.activate_subscription(
             session,
             user_id,
@@ -108,7 +111,8 @@ async def process_successful_payment(session: AsyncSession, bot: Bot,
             payment_value,
             payment_db_id,
             promo_code_id_from_payment=promo_code_id,
-            provider="yookassa")
+            provider="yookassa",
+            device_limit=device_limit)
 
         if not activation_details or not activation_details.get('end_date'):
             logging.error(

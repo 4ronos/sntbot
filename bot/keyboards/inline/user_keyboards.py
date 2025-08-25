@@ -119,24 +119,72 @@ def get_subscription_options_keyboard(subscription_options: Dict[
     return builder.as_markup()
 
 
+def get_device_limit_keyboard(device_options: Dict[int, int], lang: str,
+                              i18n_instance) -> InlineKeyboardMarkup:
+    _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
+    builder = InlineKeyboardBuilder()
+    
+    # Add device limit buttons (1-6)
+    for device_count in range(1, 7):
+        if device_count in device_options:
+            button_text = _("device_limit_button", devices=device_count)
+            builder.button(text=button_text,
+                           callback_data=f"device_limit:{device_count}")
+    
+    # Add custom device limit button
+    builder.button(text=_("device_limit_custom_button"),
+                   callback_data="device_limit:custom")
+    
+    builder.adjust(3)  # 3 buttons per row
+    builder.row(
+        InlineKeyboardButton(text=_(key="back_to_main_menu_button"),
+                             callback_data="main_action:back_to_main"))
+    return builder.as_markup()
+
+
+def get_device_limit_keyboard_with_prices(device_prices: Dict[int, float], 
+                                          currency_symbol: str, lang: str,
+                                          i18n_instance, months: int) -> InlineKeyboardMarkup:
+    _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
+    builder = InlineKeyboardBuilder()
+    
+    # Add device limit buttons with prices (1-6)
+    for device_count in range(1, 7):
+        if device_count in device_prices:
+            price = device_prices[device_count]
+            button_text = f"{device_count} устройств - {price} {currency_symbol}"
+            builder.button(text=button_text,
+                           callback_data=f"device_limit:{device_count}:{months}")
+    
+    # Add custom device limit button
+    builder.button(text=_("device_limit_custom_button"),
+                   callback_data=f"device_limit:custom:{months}")
+    
+    builder.adjust(3)  # 3 buttons per row
+    builder.row(
+        InlineKeyboardButton(text=_(key="back_to_main_menu_button"),
+                             callback_data="main_action:back_to_main"))
+    return builder.as_markup()
+
+
 def get_payment_method_keyboard(months: int, price: float,
                                 tribute_url: Optional[str],
                                 stars_price: Optional[int],
                                 currency_symbol_val: str, lang: str,
-                                i18n_instance, settings: Settings) -> InlineKeyboardMarkup:
+                                i18n_instance, settings: Settings, device_limit: int = 1) -> InlineKeyboardMarkup:
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     builder = InlineKeyboardBuilder()
     if settings.STARS_ENABLED and stars_price is not None:
         builder.button(text=_("pay_with_stars_button"),
-                       callback_data=f"pay_stars:{months}:{stars_price}")
+                       callback_data=f"pay_stars:{months}:{stars_price}:{device_limit}")
     if settings.TRIBUTE_ENABLED and tribute_url:
         builder.button(text=_("pay_with_tribute_button"), url=tribute_url)
     if settings.YOOKASSA_ENABLED:
         builder.button(text=_("pay_with_yookassa_button"),
-                       callback_data=f"pay_yk:{months}:{price}")
+                       callback_data=f"pay_yk:{months}:{price}:{device_limit}")
     if settings.CRYPTOPAY_ENABLED:
         builder.button(text=_("pay_with_cryptopay_button"),
-                       callback_data=f"pay_crypto:{months}:{price}")
+                       callback_data=f"pay_crypto:{months}:{price}:{device_limit}")
     builder.button(text=_(key="cancel_button"),
                    callback_data="main_action:subscribe")
     builder.adjust(1)

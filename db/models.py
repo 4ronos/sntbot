@@ -72,7 +72,7 @@ class Subscription(Base):
     last_notification_sent = Column(DateTime(timezone=True), nullable=True)
     provider = Column(String, nullable=True)
     skip_notifications = Column(Boolean, default=False)
-    device_limit = Column(Integer, nullable=True, default=1, description="Number of devices for this subscription")
+    device_limit = Column(Integer, nullable=True, default=1, comment="Number of devices for this subscription")
 
     user = relationship("User", back_populates="subscriptions")
 
@@ -100,7 +100,7 @@ class Payment(Base):
     status = Column(String, nullable=False, index=True)
     description = Column(String, nullable=True)
     subscription_duration_months = Column(Integer, nullable=True)
-    device_limit = Column(Integer, nullable=True, default=1, description="Number of devices for this subscription")
+    device_limit = Column(Integer, nullable=True, default=1, comment="Number of devices for this subscription")
     promo_code_id = Column(Integer,
                            ForeignKey("promo_codes.promo_code_id"),
                            nullable=True)

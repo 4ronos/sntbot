@@ -787,7 +787,7 @@ class SubscriptionService:
             payload["trafficLimitBytes"] = traffic_limit_bytes
             payload["trafficLimitStrategy"] = self.settings.USER_TRAFFIC_STRATEGY
         if device_limit is not None:
-            payload["hwidFallbackDeviceLimit"] = device_limit
+            payload["hwidDeviceLimit"] = device_limit
         if self.settings.parsed_user_squad_uuids:
             payload["activeInternalSquads"] = self.settings.parsed_user_squad_uuids
         return payload
